@@ -35,10 +35,14 @@ UI unchanged, and adds:
 The installer picks the right PyTorch build for your GPU and driver by itself
 (`server/install_torch.py`).
 
-**Tested so far:** Linux + RTX 5090 (driver 620, CUDA 13.0), with every profile, VRAM caps
-from 4 to 10 GB, CPU-only mode, and fp16 compute (the pre-Ampere path; 38 dB vs bf16, no
-NaNs). Windows, macOS, AMD and Intel follow the same code paths but haven't been run yet.
-Reports are welcome.
+**Tested so far:**
+
+- Linux + RTX 5090 (driver 620, CUDA 13.0), with every profile, VRAM caps from 4 to 10 GB,
+  CPU-only mode, and fp16 compute (the pre-Ampere path; 38 dB vs bf16, no NaNs).
+- Windows with an NVIDIA GPU: works.
+- macOS (Apple Silicon): works.
+
+AMD and Intel GPUs follow the same code paths but haven't been run yet. Reports are welcome.
 
 ## How to use
 
