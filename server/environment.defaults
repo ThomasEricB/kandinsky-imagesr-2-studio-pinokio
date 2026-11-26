@@ -1,0 +1,60 @@
+#####################################################################################
+#
+# ISR_PROFILE: how the model is placed in memory. A profile picked from the
+# "Start with memory profile" menu overrides this for that run.
+#   auto      full if ~12.5 GB are free, otherwise low, otherwise minimum (default)
+#   full      16+ GB GPUs: whole model on the GPU, fastest (~11.5 GB peak)
+#   balanced  10 GB+ GPUs: int8 weights on the GPU (~8.5 GB peak), visually identical.
+#             Best for laptops / slow PCIe links, where streaming is slow.
+#   low       6 GB+ GPUs: weights streamed from system RAM block by block (~4.5 GB peak),
+#             output identical to full. Needs ~12 GB of free system RAM.
+#   minimum   3 GB+ GPUs: streamed + VAE tiling (~2 GB peak), slight seams possible
+#   cpu       no GPU (minutes per image)
+#
+#####################################################################################
+ISR_PROFILE=auto
+
+#####################################################################################
+#
+# ISR_DEVICE: auto, cuda, cuda:1 (second NVIDIA/AMD GPU), xpu, mps or cpu
+#
+#####################################################################################
+ISR_DEVICE=auto
+
+#####################################################################################
+#
+# ISR_QUANT: transformer weights. auto = what the profile says. none or int8.
+# ISR_VAE_TILING: auto = what the profile says. 1 saves ~2.5 GB but adds seams.
+#
+#####################################################################################
+ISR_QUANT=auto
+ISR_VAE_TILING=auto
+
+#####################################################################################
+#
+# ISR_TILE_BATCH: 1024 px tiles per transformer pass. 1 is fastest on the GPUs tested.
+#
+#####################################################################################
+ISR_TILE_BATCH=1
+
+#####################################################################################
+#
+# ISR_DTYPE: auto (bf16; fp16 on GTX 10/16 and RTX 20 series), bf16, fp16 or fp32
+#
+#####################################################################################
+ISR_DTYPE=auto
+
+#####################################################################################
+#
+# ISR_ATTENTION: native (PyTorch SDPA, default), flash or sage. flash and sage need
+# their packages installed in app/env; if missing, native is used.
+#
+#####################################################################################
+ISR_ATTENTION=native
+
+#####################################################################################
+#
+# ISR_OUTPUT_DIR: where results are saved. Empty = the outputs folder of this app.
+#
+#####################################################################################
+ISR_OUTPUT_DIR=

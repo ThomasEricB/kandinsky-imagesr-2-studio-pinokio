@@ -1,0 +1,5 @@
+{
+  "title": "Kandinsky ImageSR 2.0 Studio",
+  "description": "New image upscaler that was made to run on almost any PC: cpu-only mode + memory profiles for GPUs with 16+ GB, 10 GB, 6 GB or just 3 GB of VRAM. One-step diffusion image super-resolution (×2 / ×4) by KandinskyLab, with batch mode.",
+  "icon": "icon.png"
+}

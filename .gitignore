@@ -1,0 +1,16 @@
+# Pinokio
+logs/
+cache/
+# The cloned Space and its venv (recreated by install.js)
+app/
+# Results
+outputs/
+# Python
+__pycache__/
+*.pyc
+.DS_Store
+# Pinokio writes these agent guides into every app folder
+AGENTS.md
+CLAUDE.md
+GEMINI.md
+QWEN.md

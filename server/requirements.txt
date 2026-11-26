@@ -1,0 +1,3 @@
+# Native file dialogs for the Batch tab (see dialog.py)
+jeepney; sys_platform == "linux"
+pywin32; sys_platform == "win32"
