@@ -53,8 +53,12 @@ AMD and Intel GPUs follow the same code paths but haven't been run yet. Reports 
    slider to compare with bicubic, or use **Inspect details** for a side-by-side crop.
 3. Results are saved in `outputs/` (menu: **Open outputs**).
 
-Outputs are capped at 8192 px on the longest side, like the Space; bigger inputs are
-shrunk first. The model works on 1024 px output tiles, so time grows with the output area.
+There is no limit on the output size. The Space caps it at 8192 px; here **Limit output
+size** (on the Upscale and Batch tabs) can set a cap of 4096, 8192 or 16384 px, or any size
+you type, and bigger inputs are then shrunk first. Without a cap, the only cost is memory:
+the pipeline blends its tiles into a full-size image on the GPU, about 1 GB per
+8192×8192 px of output (4.3 GB at 16384×16384) on top of the profile's usual peak. The
+model works on 1024 px output tiles, so time grows with the output area.
 
 ### Batch mode
 
@@ -130,8 +134,10 @@ The app is a Gradio server. When it's running, Pinokio shows its URL (normally
 
 | Endpoint | Inputs | Returns |
 |---|---|---|
-| `/enhance` | `image`, `scale` (2 or 4), `creativity` (0–8) | `[[bicubic_png, upscaled_png], summary]` |
-| `/batch` | `files` (uploads, list), `paths` (folders/files on the app's machine, one per line), `scale`, `creativity`, `output_folder` (`""` = default), `overwrite`, `subfolders` (default `False`) | `[log_markdown, gallery]` |
+| `/enhance` | `image`, `scale` (2 or 4), `creativity` (0–8), `max_output_side` (default `0`) | `[[bicubic_png, upscaled_png], summary]` |
+| `/batch` | `files` (uploads, list), `paths` (folders/files on the app's machine, one per line), `scale`, `creativity`, `output_folder` (`""` = default), `overwrite`, `subfolders` (default `False`), `max_output_side` (default `0`) | `[log_markdown, gallery]` |
+
+`max_output_side` caps the result's longest side in pixels; `0` (the default) means no cap.
 
 Every `/enhance` call is also saved to `outputs/`.
 
@@ -183,6 +189,7 @@ curl -sN $URL/gradio_api/call/enhance/$ID
 
 - **"Ran out of CUDA memory"**: start with the next lower profile (the message says which).
   Other GPU apps running at the same time count against the free memory `auto` sees at startup.
+  For very large outputs, a **Limit output size** cap also helps (see *How to use*).
 - **Black or noisy output on GTX 10/16 or RTX 20 series**: set `ISR_DTYPE=fp32` (needs more
   memory, so combine with `low`).
 - **`low` or `minimum` is slow**: your PCIe link is the bottleneck; try `balanced`.

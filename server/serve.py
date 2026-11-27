@@ -8,6 +8,7 @@ the device and memory profile, and the Space's `build_demo()` gets a wrapped pip
 
 from __future__ import annotations
 
+import contextlib
 import functools
 import shutil
 import subprocess
@@ -69,6 +70,84 @@ def native_pick(kind: str) -> list[str]:
     return paths
 
 
+# --------------------------------------------------------------------------- output size cap
+
+
+def cap_control() -> gr.Dropdown:
+    return gr.Dropdown(
+        loader.OUTPUT_CAPS, value=0, label="Limit output size", allow_custom_value=True,
+        info="Longest side of the result; bigger inputs are shrunk first. Without a limit the GPU "
+             "needs about 1 GB extra per 8192×8192 px of output. Pick a size or type one.")
+
+
+@contextlib.contextmanager
+def space_cap(space, max_output_side: int):
+    """Run the Space's enhance() with this cap: it reads its MAX_OUTPUT_SIDE on every call."""
+    saved = space.MAX_OUTPUT_SIDE
+    space.MAX_OUTPUT_SIDE = max_output_side or 10**9
+    try:
+        yield
+    finally:
+        space.MAX_OUTPUT_SIDE = saved
+
+
+def size_warning(image, scale, cap) -> str:
+    """The Space's "image too large" note, for the chosen cap instead of its fixed 8192 px."""
+    cap = loader.parse_cap(cap)
+    if image is None or not cap or max(image.size) * int(scale) <= cap:
+        return ""
+    return (f"**Image too large for ×{scale} within the {cap} px limit.** It will be resized before "
+            f"upscaling so the output's longest side stays at {cap} px. Choose *No limit* to keep its size.")
+
+
+@contextlib.contextmanager
+def cap_in_space_ui(found: list):
+    """While the Space builds its UI, add cap_control() right after its Creativity slider.
+
+    The Space's app.py stays unmodified (Update git-pulls it), so its gr.Slider call for
+    Creativity is intercepted instead.
+    """
+    original = gr.Slider
+
+    def slider(*args, **kwargs):
+        made = original(*args, **kwargs)
+        if kwargs.get("label") == "Creativity" and not found:
+            found.append(cap_control())
+        return made
+
+    gr.Slider = slider
+    try:
+        yield
+    finally:
+        gr.Slider = original
+
+
+def wire_cap(space, blocks: gr.Blocks, cap: gr.Dropdown) -> bool:
+    """Feed the cap to the Space's /enhance event and to its size warning.
+
+    Returns False, leaving the Space's 8192 px cap in place, if a Space update changed them.
+    """
+    enhance = next((f for f in blocks.fns.values() if f.api_name == "enhance"), None)
+    warning = next((f for f in blocks.fns.values() if f.fn is space._size_warning), None)
+    if enhance is None or len(enhance.inputs) != 3 or warning is None or len(warning.inputs) != 2:
+        return False
+    original = enhance.fn
+
+    # Parameter names are the API's: /enhance(image, scale, creativity, max_output_side).
+    def enhance_capped(image, scale, creativity, max_output_side=0):
+        with space_cap(space, loader.parse_cap(max_output_side)):
+            return original(image, scale, creativity)
+
+    enhance.fn = enhance_capped
+    enhance.inputs.append(cap)
+    warning.fn = size_warning
+    warning.inputs.append(cap)
+    source, scale = warning.inputs[:2]
+    with blocks:
+        cap.change(size_warning, [source, scale, cap], warning.outputs, queue=False, api_visibility="private")
+    return True
+
+
 def batch_tab(runner: loader.SavingPipeline, settings: loader.Settings) -> None:
     default_out = settings.output_dir / "batch"
     gr.Markdown(
@@ -96,6 +175,7 @@ def batch_tab(runner: loader.SavingPipeline, settings: loader.Settings) -> None:
             scale = gr.Radio([("×2", 2), ("×4", 4)], value=4, label="Upscale")
             creativity = gr.Slider(0, 8, value=4, step=1, label="Creativity",
                                    info="0 · Faithful   4 · Default   8 · Creative")
+            cap = cap_control()
             output = gr.Textbox(label="Output folder", value=str(default_out))
             overwrite = gr.Checkbox(label="Overwrite results that already exist", value=False)
             with gr.Row():
@@ -117,8 +197,9 @@ def batch_tab(runner: loader.SavingPipeline, settings: loader.Settings) -> None:
     clear.click(lambda: ("", None), None, [paths, files], queue=False, api_visibility="private")
 
     def go(uploaded, paths_text, scale_value, creativity_value, output_text, overwrite_value,
-           subfolders_value=False):
+           subfolders_value=False, max_output_side=0):
         scale_value, creativity_value = int(scale_value), int(creativity_value)
+        max_output_side = loader.parse_cap(max_output_side)
         out_root = Path(output_text.strip() or default_out).expanduser()
         sources = (paths_text or "").splitlines()
         sources += [item if isinstance(item, str) else item.name for item in uploaded or []]
@@ -146,7 +227,7 @@ def batch_tab(runner: loader.SavingPipeline, settings: loader.Settings) -> None:
             written, errors = loader.upscale_files(
                 runner, [(source, target)], scale_value, creativity_value, overwrite_value,
                 on_progress=lambda i, n, src, status: lines.append(f"- `{src.name}`: {status}"),
-                start=number, total=len(pairs),
+                start=number, total=len(pairs), max_output_side=max_output_side,
             )
             counts["written"] += len(written)
             counts["failed"] += len(errors)
@@ -160,7 +241,7 @@ def batch_tab(runner: loader.SavingPipeline, settings: loader.Settings) -> None:
         yield "\n".join(lines), done[-40:]
 
     event = run.click(
-        go, [files, paths, scale, creativity, output, overwrite, subfolders], [log, gallery],
+        go, [files, paths, scale, creativity, output, overwrite, subfolders, cap], [log, gallery],
         api_name="batch", concurrency_id="imagesr",
     )
     stop.click(None, cancels=[event], queue=False, api_visibility="private")
@@ -217,9 +298,19 @@ def main() -> None:
     runner = loader.SavingPipeline(pipe, report, settings.output_dir, error_factory=gr.Error)
     settings.output_dir.mkdir(parents=True, exist_ok=True)
 
+    from PIL import Image
+
+    # Pillow refuses images above ~179 megapixels ("decompression bomb"), a guard for servers
+    # that open strangers' uploads. Here the images are the user's own, and large ones are the point.
+    Image.MAX_IMAGE_PIXELS = None
+
     import app as space  # the Space's app.py, unchanged
 
-    upscale = space.build_demo(runner)
+    found: list = []
+    with cap_in_space_ui(found):
+        upscale = space.build_demo(runner)
+    if not (found and wire_cap(space, upscale, found[0])):
+        loader.log("⚠ The Space's UI changed: its 8192 px output limit stays on the Upscale tab")
     log_failures(upscale, "enhance")
     with gr.Blocks(title="Kandinsky ImageSR 2.0 Studio", fill_width=True, delete_cache=(3600, 3600)) as root:
         with gr.Tabs():

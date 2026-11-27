@@ -41,7 +41,10 @@ logging.getLogger("torch.utils._pytree").setLevel(logging.ERROR)
 logging.getLogger("diffusers.quantizers.torchao.torchao_quantizer").setLevel(logging.ERROR)
 
 REPO_ID = "kandinskylab/Kandinsky-ImageSR-2.0"
-MAX_OUTPUT_SIDE = 8192  # same cap as the Space; the tile accumulator lives on the GPU
+# Optional cap on the result's longest side, chosen in the UI (0 = none, the default). The
+# Space caps at 8192 px. Here the only real cost is memory: the pipeline blends its tiles into
+# an fp32 image on the compute device, 16 bytes per output pixel (1 GiB at 8192 x 8192).
+OUTPUT_CAPS = [("No limit", 0), ("4096 px", 4096), ("8192 px (the Space's limit)", 8192), ("16384 px", 16384)]
 GB = 1024**3
 LAUNCHER_DIR = Path(__file__).resolve().parent.parent
 IMAGE_SUFFIXES = {".png", ".jpg", ".jpeg", ".webp", ".bmp", ".tif", ".tiff"}
@@ -363,11 +366,22 @@ def _enable_vae_tiling(vae) -> None:
 # --------------------------------------------------------------------------- inference
 
 
-def fit_input(image, scale: int):
-    """Shrink inputs whose output would pass MAX_OUTPUT_SIDE, as the Space does."""
+def parse_cap(value) -> int:
+    """The output cap from the UI or the API: a number of pixels, a "4096 px" string, or 0/None."""
+    text = str(value or 0).lower().replace("px", "").strip()
+    try:
+        return max(0, int(float(text)))
+    except ValueError:
+        return 0
+
+
+def fit_input(image, scale: int, max_output_side: int = 0):
+    """Shrink inputs whose output would pass `max_output_side` (0 = no limit)."""
     from PIL import Image
 
-    limit = MAX_OUTPUT_SIDE // scale
+    if not max_output_side:
+        return image
+    limit = max(1, max_output_side // scale)
     if max(image.size) <= limit:
         return image
     ratio = limit / max(image.size)
@@ -578,6 +592,7 @@ def upscale_files(
     on_progress: Callable[[int, int, Path, str], None] | None = None,
     start: int = 1,
     total: int | None = None,
+    max_output_side: int = 0,
 ) -> tuple[list[Path], list[str]]:
     """Upscale (source, target) pairs, logging each one to the terminal.
 
@@ -601,7 +616,7 @@ def upscale_files(
             try:
                 started = time.perf_counter()
                 with Image.open(source) as opened:
-                    image = fit_input(to_srgb(opened), scale)
+                    image = fit_input(to_srgb(opened), scale, max_output_side)
                 result = runner.run(image, scale, creativity)
                 target.parent.mkdir(parents=True, exist_ok=True)
                 save_png(result, target)
