@@ -135,8 +135,12 @@ def wire_cap(space, blocks: gr.Blocks, cap: gr.Dropdown) -> bool:
 
     # Parameter names are the API's: /enhance(image, scale, creativity, max_output_side).
     def enhance_capped(image, scale, creativity, max_output_side=0):
-        with space_cap(space, loader.parse_cap(max_output_side)):
-            return original(image, scale, creativity)
+        token = loader.SOURCE_NAME.set(loader.source_stem(image))
+        try:
+            with space_cap(space, loader.parse_cap(max_output_side)):
+                return original(image, scale, creativity)
+        finally:
+            loader.SOURCE_NAME.reset(token)
 
     enhance.fn = enhance_capped
     enhance.inputs.append(cap)

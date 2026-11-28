@@ -51,7 +51,7 @@ AMD and Intel GPUs follow the same code paths but haven't been run yet. Reports 
    Then click **Install**, then **Start**. The web UI opens once the model has loaded.
 2. Drop an image, pick ×2 or ×4 and a creativity level, and press **Upscale**. Drag the
    slider to compare with bicubic, or use **Inspect details** for a side-by-side crop.
-3. Results are saved in `outputs/` (menu: **Open outputs**).
+3. Results are saved in `outputs/` (menu: **Open outputs**) as `<original name>_x4_c4.png` (scale and creativity).
 
 There is no limit on the output size. The Space caps it at 8192 px; here **Limit output
 size** (on the Upscale and Batch tabs) can set a cap of 4096, 8192 or 16384 px, or any size

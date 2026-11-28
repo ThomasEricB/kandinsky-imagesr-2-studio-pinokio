@@ -21,6 +21,7 @@ or the Start menu:
 
 from __future__ import annotations
 
+import contextvars
 import gc
 import logging
 import os
@@ -389,6 +390,20 @@ def fit_input(image, scale: int, max_output_side: int = 0):
     return image.resize(size, resample=Image.Resampling.LANCZOS)
 
 
+# Name of the file uploaded in the Upscale tab, set by serve.py around each /enhance call.
+SOURCE_NAME: contextvars.ContextVar[str | None] = contextvars.ContextVar("isr_source_name", default=None)
+
+
+def source_stem(image) -> str | None:
+    """The original file name (without extension) of an image Gradio opened from an upload.
+
+    Gradio stores an upload under its own name, and PIL keeps that path in `filename`.
+    Pasted images have none.
+    """
+    filename = getattr(image, "filename", "") or ""
+    return Path(filename).stem or None
+
+
 def _unique(path: Path) -> Path:
     if not path.exists():
         return path
@@ -505,8 +520,8 @@ class SavingPipeline:
         started = time.perf_counter()
         result = self.run(image, upscale_factor, creativity)
         self.output_dir.mkdir(parents=True, exist_ok=True)
-        stamp = time.strftime("%Y%m%d-%H%M%S")
-        path = _unique(self.output_dir / f"{stamp}_x{upscale_factor}_c{creativity}.png")
+        stem = SOURCE_NAME.get() or time.strftime("%Y%m%d-%H%M%S")
+        path = _unique(self.output_dir / f"{stem}_x{upscale_factor}_c{creativity}.png")
         save_png(result, path)
         self.last_saved = path
         log(f"✔ Saved {path} ({result.width}×{result.height}, {time.perf_counter() - started:.1f} s)")
@@ -527,8 +542,9 @@ def find_images(folder: Path, recursive: bool = False) -> list[Path]:
     return sorted(p for p in candidates if p.is_file() and p.suffix.lower() in IMAGE_SUFFIXES)
 
 
-# Results this app writes: <name>_x<2|4>_c<0-8>.png, or <name>-<n>_x..._c....png on a name clash.
-RESULT_NAME = re.compile(r"_x[24]_c[0-8]$")
+# Results this app writes: <name>_x<2|4>_c<0-8>.png. A name clash adds "-<n>" before "_x" in
+# batch mode and after "_c<0-8>" in the Upscale tab.
+RESULT_NAME = re.compile(r"_x[24]_c[0-8](-\d+)?$")
 
 
 def is_result(path: Path) -> bool:
